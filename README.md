@@ -1,59 +1,33 @@
 # Airline Tweet Sentiment Triage
 
-A multiclass sentiment classifier that helps airline customer service teams prioritize which tweets need a human response — and which don't.
+Airlines get thousands of tweets a day, and most of the real work is figuring out which ones need a person. A delayed-flight rant and a "thanks for the upgrade!" land in the same feed, but only one of them is a reputation risk sitting on a clock. This project asks whether a model reading nothing but the text of a tweet can sort that feed well enough to tell a customer service team where to look first.
 
-## The Problem
+The short answer is yes, mostly. The more useful answer is in where it breaks.
 
-When a flight is delayed or a bag goes missing, customers tweet. For an airline's social media team, the challenge isn't finding negative tweets — it's finding them fast enough to respond before frustration compounds. A team that has to read every tweet manually can't scale. One that just responds to everything loses the ability to prioritize.
+## What I built
 
-This project builds a classifier to do the triage: flag tweets that likely need a human response, surface the genuinely upset customers, and let the team focus their attention where it matters.
+I trained a classifier on roughly 14,000 tweets aimed at major U.S. airlines, each labeled negative, neutral, or positive. It uses TF-IDF to turn raw tweet text into numeric features and a logistic regression to make the call, with hyperparameters picked by cross-validated grid search. I left the airline name out of the features on purpose, so the model learns what frustration sounds like rather than which carrier gets complained about most.
 
-## The Question
+## What I found
 
-Can the *language* of a tweet alone — no metadata, no account history, just the words — predict sentiment well enough to support customer service triage?
+Accuracy is the wrong number to lead with, and most of the analysis is about why. You can hit 63% accuracy just by labeling every tweet negative, since negative is the majority class. That model is worthless in practice: it flags every compliment and every routine question as a complaint, so it gives the team nothing to prioritize.
 
-## Approach
+The number I actually cared about is recall on negative tweets, meaning the share of real complaints the model catches. The final model gets to 80% overall accuracy and catches 91% of negative tweets (1,672 of 1,835 in the held-out set) while still telling neutral and positive messages apart instead of lumping everything together.
 
-- **Dataset:** ~14,000 tweets directed at major U.S. airlines, labeled as negative, neutral, or positive
-- **Features:** Raw tweet text only (airline name excluded — this makes the model more general)
-- **Model:** TF-IDF vectorization + multinomial logistic regression, tuned via 5-fold cross-validated grid search over vocabulary size, n-gram range, regularization strength, and stop words
-- **Evaluation:** Class-specific precision, recall, and F1 — not just accuracy — because the cost of errors is asymmetric
-
-## Why Accuracy Alone Is Misleading Here
-
-The majority-class baseline achieves **63% accuracy** by predicting every tweet as negative. That sounds reasonable until you realize it completely fails to identify neutral and positive tweets — meaning it would flag routine questions and compliments as complaints. A real triage tool needs to distinguish between them.
-
-## Results
-
-| Metric | Majority-Class Baseline | TF-IDF + Logistic Regression |
+| Metric | Always-negative baseline | This model |
 |---|---|---|
-| Accuracy | 63% | **80%** |
-| Negative Recall | 100%* | **91%** |
-| Macro F1 | 0.26 | **0.73** |
-| Weighted F1 | 0.48 | **0.79** |
+| Accuracy | 63% | 80% |
+| Negative recall | 100% (by cheating) | 91% |
+| Macro F1 | 0.26 | 0.73 |
+| Weighted F1 | 0.48 | 0.79 |
 
-*The baseline achieves perfect negative recall only because it labels everything as negative — it identifies no neutral or positive tweets at all.
+Reading the model's coefficients back out confirms it learned something real rather than gaming the labels. The terms that push hardest toward negative are the actual failure points of air travel: worst, delayed, cancelled, hold, stuck, luggage, hours. The neutral signal is the language of people asking questions (hi, can, possible) rather than people who are upset.
 
-The selected model correctly classified **1,672 of 1,835** negative tweets in the held-out test set.
+## Where it breaks, and why that matters
 
-## What the Model Actually Learned
+The misses are the interesting part. When the model gets a negative tweet wrong, it's almost always sarcasm ("oh perfect, another two-hour delay") or something short and ambiguous that needs context the words alone don't carry. That's the whole case for how you'd actually deploy this. It's good enough to rank a queue and put the likely complaints in front of a person first. It is not good enough to answer tweets on its own, because the ones it misreads are exactly the ones where a wrong automated reply would embarrass the brand.
 
-Extracting logistic regression coefficients shows the model learned real airline pain points — not noise:
+So the recommendation is narrow on purpose: use it to triage the queue, not to run it. It reliably catches nine of every ten complaints and clears most of the noise, and a human still handles the hard tenth.
 
-**Strongest predictors of negative sentiment:** "worst," "delayed," "hold," "cancelled," "stuck," "luggage," "hours"
-
-**Strongest predictors of neutral:** "hi," "can," "possible" — consistent with informational questions rather than emotional reactions
-
-This interpretability matters if the model is going to inform real customer service decisions.
-
-## Where It Fails
-
-Error analysis of misclassified negative tweets reveals two main failure modes: **sarcasm** and **short, contextually ambiguous messages**. A tweet like "oh great, another delay" reads neutrally on word-level features. This supports using the model as a decision-support tool for human triage — not as a fully automated response system.
-
-## Recommendation
-
-Deploy as a prioritization layer, not a replacement for human judgment. The model catches 91% of negative tweets and substantially reduces the noise of neutral and positive messages in the queue. The 9% it misses tend to be the hard cases (sarcasm, ambiguity) that human representatives should review anyway.
-
-## Tools
-
-Python · pandas · scikit-learn · TF-IDF · logistic regression · GridSearchCV · matplotlib
+## Stack
+Python, pandas, scikit-learn (TF-IDF, logistic regression, GridSearchCV), matplotlib.
